@@ -205,6 +205,28 @@ namespace fsciosystem {
       return new_votepay_share;
    }
    
+   int128_t system_contract::calculate_prod_all_voter_age( const name producer, const time_point distribut_time ) {
+      int128_t total_voter_age = 0;
+      auto pitr = _producers.find( producer.value );
+      std::vector<name> voters = pitr->voters;
+      std::vector<name>::iterator it = voters.begin();
+      while( it != voters.end() ) {
+         const auto& voter = _voters.get( (*it).value, "voter not found" );
+         votes_table votes_tbl( _self, (*it).value );
+         const auto& vts = votes_tbl.get( producer.value, "voter have not add votes to the the producer yet" );
+         int128_t newest_voteage = static_cast<int128_t>( vts.voteage + (vts.vote_num.amount / precision_unit_integer()) * static_cast<int64_t>( ( distribut_time - vts.voteage_update_time ).count() / voteage_basis ) );
+         
+         votes_tbl.modify( vts, same_payer, [&]( vote_info & v ) {
+            v.voteage = newest_voteage;
+            v.voteage_update_time = distribut_time;
+         });
+
+         total_voter_age += newest_voteage;
+         it++;
+      }
+      return total_voter_age;
+   }
+
    /**
     *  @pre producers must be sorted from lowest to highest and must be registered and active
     *  @pre if proxy is set then no producers can be voted for
@@ -260,15 +282,15 @@ namespace fsciosystem {
             v.vote_num = vote_num;
             v.voteage = 0;
             v.voteage_update_time = ct;
+            v.vote_weight = new_vote_weight;
          });
       } else {
          change_votes = vote_num.amount - vts-> vote_num.amount;
          fscio_assert( change_votes <= voter-> staked_balance.amount, "need votes change quantity < your staked balance" );
 
          votes_tbl.modify( vts, same_payer, [&]( vote_info & v ) {
-            v.voteage += (v.vote_num.amount / precision_unit_integer()) * static_cast<int64_t>(( ( ct - v.voteage_update_time ).count() / voteage_basis ));
-            v.voteage_update_time = ct;
             v.vote_num = vote_num;
+            v.vote_weight = new_vote_weight;
          });
       }
 
@@ -277,13 +299,17 @@ namespace fsciosystem {
          v.last_vote_weight = new_vote_weight;
       });
 
-
       _producers.modify( prod, same_payer, [&]( producer_info & p ) {
-         p.total_voteage         += (p.total_votes / precision_unit_integer()) * ( ( ct - p.voteage_update_time ).count() / voteage_basis );
+         p.total_vote_num.amount += change_votes;
+         p.total_voteage         = calculate_prod_all_voter_age( producer_name, ct );
          p.voteage_update_time   = ct;
          p.total_votes           += diff_value;
          if ( p.total_votes < 0 ) { // floating point arithmetics can give small negative numbers
             p.total_votes = 0;
+         }
+         std::vector<name>::iterator it = find(p.voters.begin(), p.voters.end(), voter_name);
+         if( it == p.voters.end() ){
+            p.voters.push_back (voter_name);
          }
          _gstate.total_producer_vote_weight += diff_value;
       });

@@ -134,6 +134,7 @@ namespace fsciosystem {
 
    struct [[fscio::table, fscio::contract("fscio.system")]] producer_info {
       name                  owner;
+      std::vector<name>     voters;
       double                total_votes = 0;
       fscio::public_key     producer_key; /// a packed public key object
       bool                  is_active = true;
@@ -148,6 +149,7 @@ namespace fsciosystem {
       double                commission_rate = 0;
       time_point            last_commission_rate_adjustment_time;
       int128_t              total_voteage;
+      fscio::asset          total_vote_num;
       time_point            voteage_update_time;
       int64_t               rewards_producer_block_pay_balance = 0;
       int64_t               rewards_producer_vote_pay_balance = 0;
@@ -167,10 +169,10 @@ namespace fsciosystem {
       void     deactivate()       { producer_key = public_key(); is_active = false; }
 
       // explicit serialization macro is not necessary, used here only to improve compilation time
-      FSCLIB_SERIALIZE( producer_info, (owner)(total_votes)(producer_key)(is_active)(url)
+      FSCLIB_SERIALIZE( producer_info, (owner)(voters)(total_votes)(producer_key)(is_active)(url)
                         (unpaid_blocks)(last_claim_time)(location)
                         (votepay_share)(last_votepay_share_update)(blockpay_share)(last_blockpay_share_update)
-                        (commission_rate)(last_commission_rate_adjustment_time)(total_voteage)
+                        (commission_rate)(last_commission_rate_adjustment_time)(total_voteage)(total_vote_num)
                         (voteage_update_time)(rewards_producer_block_pay_balance)(rewards_producer_vote_pay_balance)
                         (rewards_voters_block_pay_balance)(rewards_voters_vote_pay_balance)
                         (reserved1)(reserved2)(reserved3)(reserved4)(reserved5)(reserved6)
@@ -214,8 +216,9 @@ namespace fsciosystem {
    struct [[fscio::table, fscio::contract("fscio.system")]] vote_info {
       name                 producer_name; 
       fscio::asset         vote_num;
+      double               vote_weight;
       time_point           voteage_update_time;
-      int64_t              voteage = 0;
+      int128_t             voteage = 0;
 
       time_point           reserved1;
       uint64_t             reserved2;
@@ -223,7 +226,7 @@ namespace fsciosystem {
 
       uint64_t             primary_key() const { return producer_name.value; }
 
-      FSCLIB_SERIALIZE( vote_info, (producer_name)(vote_num)(voteage_update_time)(voteage)
+      FSCLIB_SERIALIZE( vote_info, (producer_name)(vote_num)(vote_weight)(voteage_update_time)(voteage)
                                    (reserved1)(reserved2)(reserved3)
                       )
    };
@@ -458,7 +461,8 @@ namespace fsciosystem {
                                                double shares_rate, bool reset_to_zero = false );
          double update_total_votepay_share( time_point ct,
                                             double additional_shares_delta = 0.0, double shares_rate_delta = 0.0 );
-         
+         int128_t calculate_prod_all_voter_age( const name producer, const time_point distribut_time );
+
          // defined in producer_pay.cpp
          uint64_t precision_unit_integer( void );
          uint64_t get_min_activated_stake( void );

@@ -111,40 +111,26 @@ namespace fsciosystem {
       print(" ------------- claimvoter ----------------\n");
       print("owner: ", owner, "\n");
       print("producer: ", producer, "\n");
+
+      auto ct = current_time_point();
+      int128_t newest_total_voteage = calculate_prod_all_voter_age( producer, ct );
+      
       const auto& voter = _voters.get( owner.value, "voter not found" );
       const auto& prod = _producers.get( producer.value, "producer not found" );
-      auto ct = current_time_point();
-
+      
       fscio_assert( ( ct - voter.last_claim_time ).count() >= claim_voter_rewards_preiod, "already claimed rewards within past preiod" );
 
       votes_table votes_tbl( _self, owner.value );
       const auto& vts = votes_tbl.get( producer.value, "voter have not add votes to the the producer yet" );
 
-      int128_t newest_voteage = static_cast<int128_t>( vts.voteage + (vts.vote_num.amount / precision_unit_integer()) * static_cast<int64_t>( ( ct - vts.voteage_update_time ).count() / voteage_basis ) );
-      print("vts.voteage = ", vts.voteage, "\n");
-      print("vts.vote_num.amount = ", vts.vote_num.amount, "\n");
-      print("voteage_basis = ", voteage_basis, "\n");
-      print("( ct - vts.voteage_update_time ).count(): ", ( ct - vts.voteage_update_time ).count(), "\n");
-      print("( ( ct - vts.voteage_update_time ).count() / voteage_basis ): ", static_cast<int64_t>( ( ct - vts.voteage_update_time ).count() / voteage_basis ), "\n");
-      print("newest_voteage = ", newest_voteage, "\n");
-
-      print("prod.total_voteage = ", prod.total_voteage, "\n");
-      print("prod.total_votes = ", prod.total_votes, "\n");
-      print("( ct - prod.voteage_update_time ).count() = ", ( ct - prod.voteage_update_time ).count(), "\n");
-
-      int128_t newest_total_voteage = static_cast<int128_t>( prod.total_voteage + (prod.total_votes/precision_unit_integer()) * static_cast<int64_t>( ( ct - prod.voteage_update_time ).count() / voteage_basis ));
-      
+      int128_t newest_voteage = vts.voteage;
       print("newest_total_voteage = ", newest_total_voteage, "\n");
       fscio_assert( newest_total_voteage > 0, "claim is not available yet" );
- 
-      int64_t vote_reward = static_cast<int64_t>( static_cast<int128_t>( prod.rewards_voters_vote_pay_balance ) * newest_voteage / newest_total_voteage );
-      int64_t block_reward = static_cast<int64_t>( static_cast<int128_t>( prod.rewards_voters_block_pay_balance ) * newest_voteage / newest_total_voteage );
-      
-      print("vote_reward = ", vote_reward, "\n");
-      print("prod.rewards_voters_vote_pay_balance = ", prod.rewards_voters_vote_pay_balance, "\n");
-      print("static_cast<int128_t>( prod.rewards_voters_vote_pay_balance ) = ", static_cast<int128_t>( prod.rewards_voters_vote_pay_balance ), "\n");
-      print("block_reward = ", block_reward, "\n");
-      print("prod.rewards_voters_block_pay_balance = ", prod.rewards_voters_block_pay_balance, "\n");
+
+      double cut_rate = static_cast<double>( newest_voteage ) / static_cast<double>( newest_total_voteage );
+
+      int64_t vote_reward = static_cast<int64_t>( static_cast<double>( prod.rewards_voters_vote_pay_balance ) * cut_rate );
+      int64_t block_reward = static_cast<int64_t>( static_cast<double>( prod.rewards_voters_block_pay_balance ) * cut_rate );
 
       fscio_assert( 0 <= vote_reward && vote_reward <= prod.rewards_voters_vote_pay_balance, "vote_reward don't count" );
       fscio_assert( 0 <= block_reward && block_reward <= prod.rewards_voters_block_pay_balance, "block_reward don't count" );
