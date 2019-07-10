@@ -205,11 +205,19 @@ namespace fsciosystem {
       fscio_assert( kbytes > 0, "cannot sell negative byte" );
 
       uint32_t bytes = kbytes << 10;
+      
+      // When selling, first subtract airdrop RAM
+      uint32_t airdrop_ram_bytes = 0;
+      res_airdrop_table  airdrop( _self, _self.value );
+      auto airdrop_itr = airdrop.find( account.value );
+      if( airdrop_itr != airdrop.end() ) {
+         airdrop_ram_bytes = airdrop_itr->res_airdrop_ram;
+      }
 
       user_resources_table  userres( _self, account.value );
       auto res_itr = userres.find( account.value );
       fscio_assert( res_itr != userres.end(), "no resource row" );
-      fscio_assert( res_itr->ram_bytes >= bytes, "insufficient quota" );
+      fscio_assert( (res_itr->ram_bytes - airdrop_ram_bytes) >= bytes, "insufficient quota" );
 
       asset tokens_out;
       auto itr = _rammarket.find(ramcore_symbol.raw());
