@@ -417,7 +417,7 @@ namespace fsciosystem {
           * This function is used to set the maximum amount of air drop that each account can get
           */
          [[fscio::action]]
-         void setresadcfg( uint32_t limit_ram_kbytes, asset limit_net, asset limit_cpu );
+         void setresadcfg( uint32_t limit_ram_bytes, asset limit_net, asset limit_cpu );
 
       private:
       

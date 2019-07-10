@@ -454,13 +454,13 @@ namespace fsciosystem {
       });
    }
 
-   void system_contract::setresadcfg( uint32_t limit_ram_kbytes, asset limit_net, asset limit_cpu ) {
+   void system_contract::setresadcfg( uint32_t limit_ram_bytes, asset limit_net, asset limit_cpu ) {
       require_auth(_self);
 
       fscio_assert(limit_cpu >= asset(0, system_contract::get_core_symbol()), "The resource airdrop cpu must be approximately equal to 0");
       fscio_assert(limit_net >= asset(0, system_contract::get_core_symbol()), "The resource airdrop net must be approximately equal to 0");
 
-      _gstate.res_airdrop_limit_ram_bytes = limit_ram_kbytes * 1024ull;
+      _gstate.res_airdrop_limit_ram_bytes = limit_ram_bytes;
       _gstate.res_airdrop_limit_cpu = limit_cpu;
       _gstate.res_airdrop_limit_net = limit_net;
 
