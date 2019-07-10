@@ -7,7 +7,7 @@ namespace fsciosystem {
 
    const int64_t  min_pervote_daily_pay = 10;               // Minimum num of vote pay
    const int64_t  max_issure_supply     = 150'000'000;      // max supply 1.5
-   const double   min_activated_stake_rate = 0.15;          // 15% rate, based on max supply
+   const double   min_activated_stake_rate = 0.04;          // 4% rate, based on max supply
    const double   continuous_rate       = 0.04879;          // 5% annual rate
    const double   perblock_rate         = 0.2;              // 20% producer block reward
    const double   standby_rate          = 0.3;              // 30% Voting reward
