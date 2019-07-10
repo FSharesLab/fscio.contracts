@@ -188,42 +188,6 @@ namespace fsciosystem {
       return max_issure_supply * ( min_activated_stake_rate * precision_unit_integer() );
    }
 
-   void system_contract::exprewards( const name owner ) {
-      require_auth( owner );
-
-      const auto usecs_since_last_fill = (current_time_point() - _gstate.last_pervote_bucket_fill).count();
-      if ( usecs_since_last_fill > 0 && _gstate.last_pervote_bucket_fill > time_point() ) {
-         const asset token_supply = fscio::token::get_supply(token_account, core_symbol().code());
-         auto new_tokens = static_cast<int64_t>((continuous_rate * static_cast<double>(token_supply.amount) * static_cast<double>(usecs_since_last_fill)) / static_cast<double>(useconds_per_year ));
-         fscio::print_f("Average reward for each block = : {%f}, {%}\n", static_cast<double>(new_tokens) / static_cast<double>(precision_unit_integer() * _gstate.total_unpaid_blocks), token_supply.symbol);
-         print("token_supply is:", token_supply.amount, token_supply.symbol, "\n");
-         print("new_tokens is:", new_tokens, "\n");
-         print("usecs_since_last_fill = ", usecs_since_last_fill, "\n");
-         print("_gstate.total_unpaid_blocks = ", _gstate.total_unpaid_blocks, "\n");
-         print("precision_unit_integer() = ", precision_unit_integer(), "\n");
-      }
-   }
-
-   void system_contract::frerewards( const name owner ){
-      require_auth( owner );
-      auto ct = current_time_point();
-      _gstate.next_total_pay_unpaid_blocks += _gstate.total_unpaid_blocks;
-      update_total_blockpay_share( ct, 0.0, _gstate.total_unpaid_blocks );
-      
-      print("_gstate.new_unpaid_blocks = ", _gstate.next_total_pay_unpaid_blocks, "\n");
-      print("_gstate.new_unpaid_blocks = ", _gstate.total_unpaid_blocks, "\n");
-      _gstate.total_unpaid_blocks   = 0;
-
-      auto pitr = _producers.begin();
-      while( pitr != _producers.end() && pitr->active() ) {
-         _producers.modify(pitr, same_payer, [&](auto &p) {
-            p.next_pay_unpaid_blocks += p.unpaid_blocks;
-            p.unpaid_blocks = 0;
-         });
-         pitr ++;
-      }
-   }
-
    void system_contract::distribute_voters_rewards( const time_point distribut_time, const name producer ) {
       require_activated();
       const auto usecs_since_last_fill = (distribut_time - _gstate.last_pervote_bucket_fill).count();
@@ -306,28 +270,11 @@ namespace fsciosystem {
          print("producer_per_vote_pay = ", producer_per_vote_pay, "\n");
          print(" ------------------producer_per_vote_pay end---------------- \n");
 
-         print(" ------------------update_total_blockpay_share begin---------------- \n");
-         
-         double total_blockpay_share = update_total_blockpay_share( distribut_time);
-         print("total_blockpay_share = ", total_blockpay_share, "\n");
-         print("_gstate.perblock_bucket = ", _gstate.perblock_bucket, "\n");
-         print("_gstate.next_total_pay_unpaid_blocks = ", _gstate.next_total_pay_unpaid_blocks, "\n");
-         print(" ------------------update_total_blockpay_share end---------------- \n");
-
          print(" ------------------update_producer_blockpay_share begin---------------- \n");
-         double next_pay_unpaid_blocks = pitr->next_pay_unpaid_blocks;
-         print("next_pay_unpaid_blocks = ", next_pay_unpaid_blocks, "\n");
-         double new_blockpay_share = update_producer_blockpay_share( pitr,
-                                             distribut_time,
-                                             updated_after_threshold ? 0.0 : next_pay_unpaid_blocks,
-                                             true // reset votepay_share to zero after updating
-                                          );
-         print("new_blockpay_share = ", new_blockpay_share, "\n");
-          int64_t producer_per_block_pay = 0;
-         if( total_blockpay_share > 0 && !crossed_threshold ) {
-            producer_per_block_pay = int64_t((new_blockpay_share * _gstate.perblock_bucket) / total_blockpay_share);
-            if( producer_per_block_pay > _gstate.perblock_bucket )
-               producer_per_block_pay = _gstate.perblock_bucket;
+         uint32_t init_unpaid_blocks = pitr->unpaid_blocks;
+         int64_t producer_per_block_pay = 0;
+         if( _gstate.total_unpaid_blocks > 0 ) {
+            producer_per_block_pay = ( _gstate.perblock_bucket * init_unpaid_blocks ) / _gstate.total_unpaid_blocks;
          }
          print("producer_per_block_pay = ", producer_per_block_pay, "\n");
          print(" ------------------update_producer_blockpay_share end---------------- \n");
@@ -342,24 +289,25 @@ namespace fsciosystem {
          
          print("_gstate.pervote_bucket = ", _gstate.pervote_bucket, "\n");
          print("_gstate.perblock_bucket = ", _gstate.perblock_bucket, "\n");
-         print("_gstate.next_total_pay_unpaid_blocks = ", _gstate.next_total_pay_unpaid_blocks, "\n");
+         print("_gstate.total_unpaid_blocks = ", _gstate.total_unpaid_blocks, "\n");
          _gstate.pervote_bucket      -= producer_per_vote_pay;
          _gstate.perblock_bucket     -= producer_per_block_pay;
-         _gstate.next_total_pay_unpaid_blocks -= next_pay_unpaid_blocks;
+         _gstate.total_unpaid_blocks -= init_unpaid_blocks;
+
          print(" ------------------end---------------- \n");
          print("_gstate.pervote_bucket = ", _gstate.pervote_bucket, "\n");
          print("_gstate.perblock_bucket = ", _gstate.perblock_bucket, "\n");
-         print("_gstate.next_total_pay_unpaid_blocks = ", _gstate.next_total_pay_unpaid_blocks, "\n");
+         print("_gstate.total_unpaid_blocks = ", _gstate.total_unpaid_blocks, "\n");
 
          update_total_votepay_share( distribut_time, -new_votepay_share, (updated_after_threshold ? init_total_votes : 0.0) );
-         update_total_blockpay_share( distribut_time, -new_blockpay_share, (updated_after_threshold ? 0.0 : -next_pay_unpaid_blocks) );
+
          print(" ------------------last---------------- \n");
          print("producer_per_vote_pay = ", producer_per_vote_pay, "\n");
          print("producer_per_block_pay = ", producer_per_block_pay, "\n");
-         print("next_total_pay_unpaid_blocks = ", next_pay_unpaid_blocks, "\n");
+         print("init_unpaid_blocks = ", init_unpaid_blocks, "\n");
 
          _producers.modify(pitr, same_payer, [&](auto &p) {
-            p.next_pay_unpaid_blocks = 0;
+            p.unpaid_blocks = 0;
             p.last_claim_time = distribut_time;
             p.rewards_voters_block_pay_balance += to_voters_block_reward;
             p.rewards_voters_vote_pay_balance += to_voters_vote_reward;

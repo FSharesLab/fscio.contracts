@@ -78,15 +78,6 @@ namespace fsciosystem {
                }
             });
          }
-         
-         if( prod->last_votepay_share_update == time_point() ) {
-            _producers.modify( prod, same_payer, [&](auto& p) {
-               p.last_votepay_share_update = ct;
-            });
-
-            update_total_votepay_share( ct, 0.0, prod->total_votes );
-         }
-
       } else {
          _producers.emplace( producer, [&]( producer_info& info ){
             info.owner           = producer;
@@ -98,6 +89,7 @@ namespace fsciosystem {
             info.last_claim_time = ct;
             info.commission_rate = commission_rate;
             info.last_commission_rate_adjustment_time = ct;
+            info.last_votepay_share_update = ct;
          });
       }
    }
@@ -146,6 +138,12 @@ namespace fsciosystem {
       }
    }
 
+   double stake2vote( int64_t staked ) {
+      /// TODO subtract 2080 brings the large numbers closer to this decade
+      double weight = int64_t( (now() - (block_timestamp::block_timestamp_epoch / 1000)) / (seconds_per_day * 7) )  / double( 52 );
+      return double(staked) * std::pow( 2, weight );
+   }
+
    double system_contract::update_total_votepay_share( time_point ct,
                                                        double additional_shares_delta,
                                                        double shares_rate_delta )
@@ -184,40 +182,6 @@ namespace fsciosystem {
       return _gstate.total_producer_votepay_share;
    }
 
-   double system_contract::update_total_blockpay_share( time_point ct,
-                                                       double additional_shares_delta,
-                                                       double shares_rate_delta )
-   {
-      print(" ------------------update_total_blockpay_share begin---------------- \n");
-      print("additional_shares_delta = ", additional_shares_delta, "\n");
-      print("shares_rate_delta = ", shares_rate_delta, "\n");
-      print("_gstate.total_bpay_share_change_rate = ", _gstate.total_bpay_share_change_rate, "\n");
-      double delta_total_blockpay_share = 0.0;
-      if( ct > _gstate.last_bpay_state_update ) {
-         delta_total_blockpay_share = _gstate.total_bpay_share_change_rate
-                                       * double( (ct - _gstate.last_bpay_state_update).count() / 1E6 );
-      }
-      print("delta_total_blockpay_share = ", delta_total_blockpay_share, "\n");
-      delta_total_blockpay_share += additional_shares_delta;
-      print("delta_total_blockpay_share = ", delta_total_blockpay_share, "\n");
-      if( delta_total_blockpay_share < 0 && _gstate.total_producer_blockpay_share < -delta_total_blockpay_share ) {
-         _gstate.total_producer_blockpay_share = 0.0;
-      } else {
-         _gstate.total_producer_blockpay_share += delta_total_blockpay_share;
-      }
-      print("_gstate.total_producer_blockpay_share = ", _gstate.total_producer_blockpay_share, "\n");
-      if( shares_rate_delta < 0 && _gstate.total_bpay_share_change_rate < -shares_rate_delta ) {
-         _gstate.total_bpay_share_change_rate = 0.0;
-      } else {
-         _gstate.total_bpay_share_change_rate += shares_rate_delta;
-      }
-      print("_gstate.total_bpay_share_change_rate = ", _gstate.total_bpay_share_change_rate, "\n");
-      
-      _gstate.last_bpay_state_update = ct;
-      print(" ------------------update_total_blockpay_share end---------------- \n");
-      return _gstate.total_producer_blockpay_share;
-   }
-
    double system_contract::update_producer_votepay_share( const producers_table::const_iterator& prod_itr,
                                                           time_point ct,
                                                           double shares_rate,
@@ -240,29 +204,7 @@ namespace fsciosystem {
 
       return new_votepay_share;
    }
-
-   double system_contract::update_producer_blockpay_share( const producers_table::const_iterator& prod_itr,
-                                                          time_point ct,
-                                                          double shares_rate,
-                                                          bool reset_to_zero )
-   {
-      double delta_blockpay_share = 0.0;
-      if( shares_rate > 0.0 && ct > prod_itr->last_blockpay_share_update ) {
-         delta_blockpay_share = shares_rate * double( (ct - prod_itr->last_blockpay_share_update).count() / 1E6 ); // cannot be negative
-      }
-
-      double new_blockpay_share = prod_itr->blockpay_share + delta_blockpay_share;
-      _producers.modify( prod_itr, same_payer, [&](auto& p) {
-         if( reset_to_zero )
-            p.blockpay_share = 0.0;
-         else
-            p.blockpay_share = new_blockpay_share;
-
-         p.last_blockpay_share_update = ct;
-      } );
-
-      return new_blockpay_share;
-   }
+   
    /**
     *  @pre producers must be sorted from lowest to highest and must be registered and active
     *  @pre if proxy is set then no producers can be voted for
@@ -294,7 +236,19 @@ namespace fsciosystem {
       fscio_assert( prod != _producers.end() && prod->active(), "producer is not registered" );
 
       int64_t change_votes = 0; /** Increase or decrease voting num */
-
+      print(" vote_num.amount=", vote_num.amount, "\n");
+      print(" voter->last_vote_weight=", voter->last_vote_weight, "\n");
+      auto new_vote_weight = stake2vote( vote_num.amount );
+      print(" new_vote_weight=", new_vote_weight, "\n");
+      double diff_value = 0.0;
+      if ( voter->last_vote_weight > 0 ) {
+         diff_value -= voter->last_vote_weight;
+      }
+      print(" diff_value=", diff_value, "\n");
+      if( new_vote_weight >= 0 ) {
+         diff_value += new_vote_weight;
+      }
+      print(" diff_value=", diff_value, "\n");
       votes_table votes_tbl( _self, voter_name.value );
       auto vts = votes_tbl.find( producer_name.value );
       auto ct = current_time_point();
@@ -320,16 +274,18 @@ namespace fsciosystem {
 
       _voters.modify( voter, same_payer, [&]( voter_info & v ) {
          v.staked_balance.amount -= change_votes;
+         v.last_vote_weight = new_vote_weight;
       });
 
 
       _producers.modify( prod, same_payer, [&]( producer_info & p ) {
          p.total_voteage         += (p.total_votes / precision_unit_integer()) * ( ( ct - p.voteage_update_time ).count() / voteage_basis );
          p.voteage_update_time   = ct;
-         p.total_votes           += change_votes;
+         p.total_votes           += diff_value;
          if ( p.total_votes < 0 ) { // floating point arithmetics can give small negative numbers
             p.total_votes = 0;
          }
+         _gstate.total_producer_vote_weight += diff_value;
       });
 
       double delta_change_rate         = 0.0;
@@ -347,11 +303,13 @@ namespace fsciosystem {
                                  );
 
       if( !crossed_threshold ) {
-         delta_change_rate += change_votes;
+         delta_change_rate += diff_value;
       } else if( !updated_after_threshold ) { // TODO
          total_inactive_vpay_share += new_votepay_share;
          delta_change_rate -= init_total_votes;// TODO
       }
+
+      print(" total_inactive_vpay_share=", total_inactive_vpay_share, " delta_change_rate=", delta_change_rate, "\n");
       update_total_votepay_share( ct, -total_inactive_vpay_share, delta_change_rate );
       
       _gstate.total_activated_stake += change_votes;

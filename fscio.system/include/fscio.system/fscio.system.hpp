@@ -90,7 +90,6 @@ namespace fsciosystem {
       int64_t              pervote_bucket = 0;
       int64_t              perblock_bucket = 0;
       uint32_t             total_unpaid_blocks = 0; /// all blocks which have been produced but not paid
-      uint32_t             next_total_pay_unpaid_blocks = 0;
       int64_t              total_activated_stake = 0;
       time_point           thresh_activated_stake_time;
       uint16_t             last_producer_schedule_size = 0;
@@ -124,7 +123,7 @@ namespace fsciosystem {
       FSCLIB_SERIALIZE_DERIVED( fscio_global_state, fscio::blockchain_parameters,
                                 (max_ram_size)(total_ram_bytes_reserved)(total_ram_stake)
                                 (last_producer_schedule_update)(last_pervote_bucket_fill)
-                                (pervote_bucket)(perblock_bucket)(total_unpaid_blocks)(next_total_pay_unpaid_blocks)(total_activated_stake)(thresh_activated_stake_time)
+                                (pervote_bucket)(perblock_bucket)(total_unpaid_blocks)(total_activated_stake)(thresh_activated_stake_time)
                                 (last_producer_schedule_size)(total_producer_vote_weight)(last_name_close)(new_ram_per_block)
                                 (last_ram_increase)(last_block_num)(total_producer_votepay_share)(total_producer_blockpay_share)(revision) 
                                 (last_vpay_state_update)(total_vpay_share_change_rate)(last_bpay_state_update)(total_bpay_share_change_rate)
@@ -135,12 +134,11 @@ namespace fsciosystem {
 
    struct [[fscio::table, fscio::contract("fscio.system")]] producer_info {
       name                  owner;
-      uint64_t              total_votes = 0;
+      double                total_votes = 0;
       fscio::public_key     producer_key; /// a packed public key object
       bool                  is_active = true;
       std::string           url;
       uint32_t              unpaid_blocks = 0;
-      uint32_t              next_pay_unpaid_blocks = 0;
       time_point            last_claim_time;
       uint16_t              location = 0;
       double                votepay_share = 0;
@@ -170,7 +168,7 @@ namespace fsciosystem {
 
       // explicit serialization macro is not necessary, used here only to improve compilation time
       FSCLIB_SERIALIZE( producer_info, (owner)(total_votes)(producer_key)(is_active)(url)
-                        (unpaid_blocks)(next_pay_unpaid_blocks)(last_claim_time)(location)
+                        (unpaid_blocks)(last_claim_time)(location)
                         (votepay_share)(last_votepay_share_update)(blockpay_share)(last_blockpay_share_update)
                         (commission_rate)(last_commission_rate_adjustment_time)(total_voteage)
                         (voteage_update_time)(rewards_producer_block_pay_balance)(rewards_producer_vote_pay_balance)
@@ -182,6 +180,14 @@ namespace fsciosystem {
    struct [[fscio::table, fscio::contract("fscio.system")]] voter_info {
       name                 owner;     /// the voter
       fscio::asset         staked_balance;
+      /**
+       *  Every time a vote is cast we must first "undo" the last vote weight, before casting the
+       *  new vote weight.  Vote weight is calculated as:
+       *
+       *  stated.amount * 2 ^ ( weeks_since_launch/weeks_per_year)
+       */
+      double              last_vote_weight = 0; /// the vote weight cast the last time the vote was updated
+
       time_point           last_claim_time;
       uint32_t             flags1 = 0;
 
@@ -200,7 +206,7 @@ namespace fsciosystem {
          cpu_managed = 4
       };
       // explicit serialization macro is not necessary, used here only to improve compilation time
-      FSCLIB_SERIALIZE( voter_info, (owner)(staked_balance)(last_claim_time)(flags1)
+      FSCLIB_SERIALIZE( voter_info, (owner)(staked_balance)(last_vote_weight)(last_claim_time)(flags1)
                                     (reserved1)(reserved2)(reserved3)(reserved4)(reserved5)(reserved6)
                       )
    };
@@ -273,7 +279,7 @@ namespace fsciosystem {
          static constexpr fscio::name vpay_account{"fscio.vpay"_n};
          static constexpr fscio::name names_account{"fscio.names"_n};
          static constexpr fscio::name saving_account{"fscio.saving"_n};
-		 static constexpr fscio::name resairdrop_account{"fscio.resad"_n};
+         static constexpr fscio::name resairdrop_account{"fscio.resad"_n};
          static constexpr symbol ramcore_symbol = symbol(symbol_code("RAMCORE"), 4);
          static constexpr symbol ram_symbol     = symbol(symbol_code("RAM"), 0);
 
@@ -409,13 +415,6 @@ namespace fsciosystem {
           */
          [[fscio::action]]
          void setresadcfg( uint32_t limit_ram_kbytes, asset limit_net, asset limit_cpu );
-         
-         // Used to get the newly added rewards that have been sent out.
-         [[fscio::action]]
-         void exprewards( const name owner );
-
-         [[fscio::action]]
-         void frerewards( const name owner );
 
       private:
       
@@ -458,11 +457,6 @@ namespace fsciosystem {
                                                time_point ct,
                                                double shares_rate, bool reset_to_zero = false );
          double update_total_votepay_share( time_point ct,
-                                            double additional_shares_delta = 0.0, double shares_rate_delta = 0.0 );
-         double update_producer_blockpay_share( const producers_table::const_iterator& prod_itr,
-                                               time_point ct,
-                                               double shares_rate, bool reset_to_zero = false );
-         double update_total_blockpay_share( time_point ct,
                                             double additional_shares_delta = 0.0, double shares_rate_delta = 0.0 );
          
          // defined in producer_pay.cpp

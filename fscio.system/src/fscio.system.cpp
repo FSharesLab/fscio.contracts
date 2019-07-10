@@ -479,5 +479,5 @@ FSCIO_DISPATCH( fsciosystem::system_contract,
      // voting.cpp
      (regproducer)(unregprod)(voteproducer)
      // producer_pay.cpp
-     (onblock)(claimprod)(claimvoter)(exprewards)(frerewards)
+     (onblock)(claimprod)(claimvoter)
 )
