@@ -51,7 +51,7 @@ namespace fsciosystem {
             
             /// If the commission ratio is reduced, the ratio needs to be met 
             if( prod->commission_rate > commission_rate ){
-               auto adjustment_rate = static_cast<double>((commission_rate - prod->commission_rate) / double(prod->commission_rate));
+               auto adjustment_rate = static_cast<double>((prod->commission_rate - commission_rate) / double(prod->commission_rate));
                fscio_assert( adjustment_rate <= max_commission_adjustment_rate,
                "The commission ratio does not meet the adjustment requirements. Please try again after adjustment"); 
             }

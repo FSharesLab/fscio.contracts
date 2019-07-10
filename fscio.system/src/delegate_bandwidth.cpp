@@ -87,7 +87,7 @@ namespace fsciosystem {
     */
    void system_contract::buyramkbytes( name payer, name receiver, uint32_t kbytes ) {
 
-      uint32_t bytes = kbytes << 10;
+      uint64_t bytes = kbytes * 1024ull;
 
       auto itr = _rammarket.find(ramcore_symbol.raw());
       auto tmp = *itr;
@@ -204,7 +204,7 @@ namespace fsciosystem {
 
       fscio_assert( kbytes > 0, "cannot sell negative byte" );
 
-      uint32_t bytes = kbytes << 10;
+      uint64_t bytes = kbytes * 1024ull;
       
       // When selling, first subtract airdrop RAM
       uint32_t airdrop_ram_bytes = 0;
@@ -279,7 +279,7 @@ namespace fsciosystem {
 
          asset zero_asset = asset(0, system_contract::get_core_symbol());
 
-         fscio_assert( transfer == true,  "When dropping network or CPU resources, transfer flag must be true" );
+         //fscio_assert( transfer == true,  "When dropping network or CPU resources, transfer flag must be true" );
          
          if ( stake_cpu_delta > zero_asset ) {
             fscio_assert( _gstate.res_airdrop_limit_cpu > zero_asset,  "The airdrop cpu resource function has been turned off" );
